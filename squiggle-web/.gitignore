@@ -7,24 +7,28 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
+squiggle-ui/node_modules
 .DS_Store
 dist
 dist-ssr
 coverage
 *.local
 
-/cypress/videos/
-/cypress/screenshots/
+squiggle-ui/cypress/videos/
+squiggle-ui/cypress/screenshots/
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+squiggle-ui/.vscode/*
 .idea
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# Extension directory
+extension/
 
 *.tsbuildinfo

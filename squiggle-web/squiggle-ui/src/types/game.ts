@@ -21,6 +21,13 @@ export interface Ball {
   attachedTo: { type: 'attacking' | 'defensive', id: number } | null
 }
 
+export interface TimedPass {
+  pathIndex: number // Index in the path where the pass should occur
+  position: { x: number, y: number } // The actual position on the path
+  fromPlayerId?: number // The player who will pass (determined at runtime)
+  fromPlayerType?: 'attacking' | 'defensive' // Type of the player who will pass
+}
+
 export interface Player {
   x: number
   y: number
@@ -40,19 +47,29 @@ export interface Player {
   isCarryingBall?: boolean // Whether this player is carrying the ball
   currentPathIndex?: number // Current index in path for animations
   playStartPosition?: { x: number; y: number }; // NEW: This is the immutable start position for the entire play
+  timedPass?: TimedPass // Timed pass configuration for this player
 }
 
+export type BallEventEasing = 'easeOutCubic' | 'linear'
+
 export interface BallPassEvent {
-  timestamp: number // Relative to sequence start
-  fromPlayerId: number
-  toPlayerId: number
-  ballPosition: { x: number, y: number }
+  id: string
+  type: 'pass' | 'kick'
+  fromPlayerId: number | null
+  fromPlayerType: 'attacking' | 'defensive' | null
+  toPlayerId: number | null
+  toPlayerType: 'attacking' | 'defensive' | null
+  startPosition: { x: number, y: number }
+  endPosition: { x: number, y: number }
+  startTimestamp: number
+  durationMs: number
+  easing: BallEventEasing
 }
 
 export interface Sequence {
   id: number
   name: string
-  activePlayerIds: number[] // Players that are looping in this sequence
+  activePlayerIds: string[] // Players that are looping in this sequence (format: "attacking-1", "defending-2")
   ballEvents: BallPassEvent[] // Recorded ball pass events with timing
   isActive?: boolean
   passingInterval?: number // Timer interval for ball passing
@@ -65,6 +82,7 @@ export interface Sequence {
       sequenceDelay: number
       mode: 'drag' | 'path'
       position: { x: number, y: number }
+      timedPass?: TimedPass
     }
   }
   ballState: Ball
@@ -113,22 +131,18 @@ export interface AnimationState {
   isPlayRunning: boolean
   isRunningCurrentPhase: boolean
   isRunningFullPlay: boolean
-  activeLoopingPlayers: Map<number, number>
-  playAnimations: Map<number, number>
 }
 
 export interface UIState {
   showAttackingCount: boolean
   showDefensiveCount: boolean
-  showContextMenu: boolean
-  contextMenuPlayer: Player | null
-  contextMenuPosition: { x: number, y: number }
   selectedPlayer: Player | null
   selectedBall: boolean
   isDragging: boolean
   isDrawingPath: boolean
   currentPath: PathPoint[]
   dragOffset: { x: number, y: number, playerIndex?: number, pointIndex?: number }
+  isSettingTimedPass: boolean // Whether the user is currently placing a timed pass marker
 }
 
 export interface RecordingState {
@@ -156,16 +170,7 @@ export interface CanvasInteractionEvents {
   'path-draw': (player: Player, path: PathPoint[]) => void
 }
 
-// Control panel events
-export interface ControlPanelEvents {
-  'toggle-recording': () => void
-  'toggle-sequence-mode': () => void
-  'toggle-fullscreen': () => void
-  'add-players': (type: 'attacking' | 'defensive', count: number) => void
-  'clear-paths': () => void
-  'run-current-phase': () => void
-  'run-full-play': () => void
-}
+
 
 // Phase management events
 export interface PhaseEvents {
@@ -197,11 +202,7 @@ export interface PlayerDialogState {
   visible: boolean
 }
 
-export interface ContextMenuState {
-  visible: boolean
-  position: { x: number, y: number }
-  player: Player | null
-}
+
 
 // NEW: Formation system types
 export interface Formation {
@@ -238,10 +239,7 @@ export interface CanvasProps {
   canvasConfig: CanvasConfig
 }
 
-export interface ControlPanelProps {
-  gameState: GameState
-  animationState: AnimationState
-}
+
 
 export interface PhaseManagerProps {
   phases: Phase[]
@@ -263,13 +261,13 @@ export interface PlayerManagerProps {
 
 // Type guards and utility functions
 export const isPlayer = (obj: any): obj is Player => {
-  return obj && typeof obj.x === 'number' && typeof obj.y === 'number' && 
-         ['attacking', 'defensive'].includes(obj.type) && typeof obj.id === 'number'
+  return obj && typeof obj.x === 'number' && typeof obj.y === 'number' &&
+    ['attacking', 'defensive'].includes(obj.type) && typeof obj.id === 'number'
 }
 
 export const isBall = (obj: any): obj is Ball => {
-  return obj && typeof obj.x === 'number' && typeof obj.y === 'number' && 
-         (obj.attachedTo === null || (obj.attachedTo && typeof obj.attachedTo.id === 'number'))
+  return obj && typeof obj.x === 'number' && typeof obj.y === 'number' &&
+    (obj.attachedTo === null || (obj.attachedTo && typeof obj.attachedTo.id === 'number'))
 }
 
 export const isPathPoint = (obj: any): obj is PathPoint => {
@@ -279,7 +277,7 @@ export const isPathPoint = (obj: any): obj is PathPoint => {
 // Constants
 export const CANVAS_CONFIG = {
   BASE_WIDTH: 1000,
-  FIELD_RATIO: 70/100, // Rugby field ratio (width/height)
+  FIELD_RATIO: 70 / 100, // Rugby field ratio (width/height)
   PLAYER_RADIUS_RATIO: 0.02, // Player radius as percentage of canvas size
   BALL_RADIUS_RATIO: 0.015, // Ball radius as percentage of canvas size
   GRID_SPACING: {
@@ -290,21 +288,23 @@ export const CANVAS_CONFIG = {
 
 // UNIFIED: Field calculation utility - ensures consistent field dimensions everywhere
 export const calculateFieldDimensions = (canvasWidth: number, canvasHeight: number) => {
-  // Remove extra width for substitutes to get actual field space
+  // The canvas is 1.4x wider to accommodate substitutes
+  // But we want the field centered with equal margins on both sides
   const fieldWidth = canvasWidth / 1.4
   const fieldHeight = canvasHeight
 
   // Calculate grid spacing to ensure perfect meter squares
   const squareSize = Math.min(fieldWidth / 70, fieldHeight / 100)
-  
+
   // Calculate actual field dimensions based on square size
   const actualFieldWidth = squareSize * 70  // 70 meters wide
   const actualFieldHeight = squareSize * 100 // 100 meters long
-  
-  // Center the field in the canvas
+
+  // Center the field in the full canvas width (not the reduced fieldWidth)
+  // This creates equal dark space on left and right
   const fieldX = (canvasWidth - actualFieldWidth) / 2
   const fieldY = (canvasHeight - actualFieldHeight) / 2
-  
+
   return {
     fieldWidth,
     fieldHeight,
@@ -325,10 +325,10 @@ export const calculateFieldDimensions = (canvasWidth: number, canvasHeight: numb
 export const calculatePreviewFieldDimensions = (previewWidth: number, previewHeight: number, padding: number = 20) => {
   const maxWidth = previewWidth - (padding * 2)
   const maxHeight = previewHeight - (padding * 2)
-  
+
   // Use the same ratio and calculation method as main field
   const fieldRatio = CANVAS_CONFIG.FIELD_RATIO // 70/100
-  
+
   let fieldWidth, fieldHeight
   if (maxWidth / maxHeight > fieldRatio) {
     // Height is limiting factor
@@ -339,11 +339,11 @@ export const calculatePreviewFieldDimensions = (previewWidth: number, previewHei
     fieldWidth = maxWidth
     fieldHeight = fieldWidth / fieldRatio
   }
-  
+
   // Center the field in the preview canvas
   const fieldX = padding + (maxWidth - fieldWidth) / 2
   const fieldY = padding + (maxHeight - fieldHeight) / 2
-  
+
   return {
     fieldWidth,
     fieldHeight,
@@ -360,21 +360,21 @@ export const calculatePreviewFieldDimensions = (previewWidth: number, previewHei
 export const ANIMATION_CONFIG = {
   BASE_SPEED: 100, // pixels per second at 100% speed
   DEFAULT_DURATION: 1000, // milliseconds
-  LOOP_DELAY: 200, // milliseconds between loops
-  PASS_DURATION: 300, // milliseconds for ball pass animation
+  LOOP_DELAY: 50, // milliseconds between loops
+  PASS_DURATION: 200, // milliseconds for ball pass animation
   TRIPLE_CLICK_WINDOW: 300 // milliseconds for triple-click detection
 } as const
 
 export const COLORS = {
   ATTACKING: {
-    PRIMARY: '#FF4444',
-    SECONDARY: '#FF6B6B',
-    LIGHT: '#FF8A8A'
+    PRIMARY: '#D84B4B',
+    SECONDARY: '#E46363',
+    LIGHT: '#F28C8C'
   },
   DEFENSIVE: {
-    PRIMARY: '#4444FF',
-    SECONDARY: '#4D7CFF',
-    LIGHT: '#6D9BFF'
+    PRIMARY: '#3A57A5',
+    SECONDARY: '#4867B5',
+    LIGHT: '#6E86C9'
   },
   BALL: {
     PRIMARY: '#FFB300',
@@ -384,7 +384,7 @@ export const COLORS = {
   UI: {
     BACKGROUND: '#FFFFFF',
     BORDER: '#E0E0E0',
-    SELECTED: '#FFD700',
+    SELECTED: '#0D3B66',
     DANGER: '#F44336'
   }
 } as const 

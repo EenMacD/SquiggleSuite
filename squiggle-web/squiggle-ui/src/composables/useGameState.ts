@@ -1,16 +1,17 @@
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, watch } from 'vue'
 import type { 
   Player, 
   Ball, 
   Phase, 
   Sequence, 
-  GameState, 
   CanvasConfig,
-  PlayerState
+  PlayerState,
+  PlayerType
 } from '../types/game'
 import { CANVAS_CONFIG } from '../types/game'
 
 export function useGameState() {
+  const DRAFT_KEY = 'squiggle_draft'
   // Core game state
   const players = ref<Player[]>([])
   const ball = ref<Ball>({
@@ -18,18 +19,38 @@ export function useGameState() {
     y: 0,
     attachedTo: null
   })
+
+  // Which team is considered the attacking side for number-key passes
+  const attackingType = ref<PlayerType>((() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('squiggle_attackingType') : null
+      return (saved === 'defensive' || saved === 'attacking') ? saved : 'attacking'
+    } catch {
+      return 'attacking'
+    }
+  })())
   
   const phases = ref<Phase[]>([{
     id: 1,
     name: 'Phase 1',
     playerStates: [],
     ballState: { x: 0, y: 0, attachedTo: null },
-    sequences: []
+    sequences: [{
+      id: 1,
+      name: 'Sequence 1',
+      activePlayerIds: [],
+      ballEvents: [],
+      isActive: false,
+      playerData: {},
+      ballState: { x: 0, y: 0, attachedTo: null },
+      finalPlayerPositions: {},
+      startingPlayerPositions: {}
+    }]
   }])
   
   const currentPhase = ref(1)
   const currentSequence = ref(1)
-  const isSequenceMode = ref(false)
+  const isSequenceMode = ref(true)
   const isRecording = ref(false)
   const isFullscreen = ref(false)
   
@@ -72,14 +93,109 @@ export function useGameState() {
     return phase?.sequences && phase.sequences.length > 0 && 
            phase.sequences.some(seq => seq.activePlayerIds.length > 0)
   })
+
+  // Local draft persistence (preserve current play across refresh)
+  const persistDraft = () => {
+    try {
+      const draft = {
+        players: players.value,
+        ball: ball.value,
+        phases: phases.value,
+        currentPhase: currentPhase.value,
+        currentSequence: currentSequence.value,
+      }
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  const loadDraftIfPresent = () => {
+    console.log('[loadDraftIfPresent] CALLED')
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY)
+      if (!raw) {
+        console.log('[loadDraftIfPresent] No draft found')
+        return
+      }
+      const draft = JSON.parse(raw)
+      if (draft && draft.players && draft.phases && draft.ball) {
+        console.log('[loadDraftIfPresent] Loading draft', {
+          ballFromDraft: draft.ball
+        })
+        players.value = JSON.parse(JSON.stringify(draft.players))
+        ball.value = JSON.parse(JSON.stringify(draft.ball))
+        phases.value = JSON.parse(JSON.stringify(draft.phases))
+        currentPhase.value = draft.currentPhase || 1
+        currentSequence.value = draft.currentSequence || 1
+        console.log('[loadDraftIfPresent] Ball after load', {
+          x: ball.value.x,
+          y: ball.value.y
+        })
+
+        // Migration: Ensure all players have path mode as default
+        players.value.forEach(player => {
+          if (!player.mode || player.mode === 'drag') {
+            player.mode = 'path'
+          }
+        })
+
+        // Migration: Ensure Phase 1 always has at least Sequence 1
+        // This handles old saved states that didn't have automatic sequence creation
+        const phase1 = phases.value.find(p => p.id === 1)
+        if (phase1 && (!phase1.sequences || phase1.sequences.length === 0)) {
+          phase1.sequences = [{
+            id: 1,
+            name: 'Sequence 1',
+            activePlayerIds: [],
+            ballEvents: [],
+            isActive: false,
+            playerData: {},
+            ballState: JSON.parse(JSON.stringify(ball.value)),
+            finalPlayerPositions: {},
+            startingPlayerPositions: {}
+          }]
+        }
+      }
+    } catch (_) {
+      // ignore corrupt draft
+    }
+  }
+
+  const clearDraft = () => {
+    try { localStorage.removeItem(DRAFT_KEY) } catch {}
+  }
+
+  // Helpers to manage attacking side
+  const setAttackingType = (type: PlayerType) => {
+    attackingType.value = type
+    try { localStorage.setItem('squiggle_attackingType', type) } catch {}
+  }
+
+  const toggleAttackingType = () => {
+    setAttackingType(attackingType.value === 'attacking' ? 'defensive' : 'attacking')
+  }
   
   // Player management
+  const updateSequenceStartingPositionsForPlayer = (player: Player) => {
+    const phase = currentPhaseData.value
+    if (!phase || !phase.sequences) return
+
+    const playerKey = `${player.type}-${player.id}`
+    phase.sequences.forEach(sequence => {
+      if (!sequence.startingPlayerPositions) {
+        sequence.startingPlayerPositions = {}
+      }
+      sequence.startingPlayerPositions[playerKey] = { x: player.x, y: player.y }
+    })
+  }
+
   const addPlayer = (type: 'attacking' | 'defensive', position: { x: number, y: number }) => {
     const existingPlayersOfType = players.value.filter(p => p.type === type)
     const nextId = existingPlayersOfType.length > 0 ? 
       Math.max(...existingPlayersOfType.map(p => p.id)) + 1 : 1
     
-    const assignedNumber = getNextAvailableNumber()
+    const assignedNumber = getNextAvailableNumber(type)
     
     const newPlayer: Player = {
       ...position,
@@ -88,7 +204,7 @@ export function useGameState() {
       assignedNumber,
       isSelected: false,
       speed: 100,
-      mode: 'drag',
+      mode: 'path',
       sequenceDelay: 0,
       pathVisible: true,
       originalPosition: { x: position.x, y: position.y },
@@ -96,18 +212,39 @@ export function useGameState() {
     }
     
     players.value.push(newPlayer)
+    updateSequenceStartingPositionsForPlayer(newPlayer)
     updateCanvasRadii()
   }
   
   const removePlayer = (playerId: number, type: 'attacking' | 'defensive') => {
     const index = players.value.findIndex(p => p.id === playerId && p.type === type)
     if (index !== -1) {
+      const phase = currentPhaseData.value
+      const playerKey = `${type}-${playerId}`
+      if (phase && phase.sequences) {
+        phase.sequences.forEach(sequence => {
+          if (sequence.startingPlayerPositions) {
+            delete sequence.startingPlayerPositions[playerKey]
+          }
+        })
+      }
       players.value.splice(index, 1)
     }
   }
+
+  const capturePlayerStartingPosition = (player: Player) => {
+    const snapshot = { x: player.x, y: player.y }
+    player.originalPosition = { ...snapshot }
+    player.playStartPosition = { ...snapshot }
+    updateSequenceStartingPositionsForPlayer(player)
+  }
   
-  const getNextAvailableNumber = (): number => {
-    const assignedNumbers = players.value.map(p => p.assignedNumber).filter(n => n !== undefined)
+  const getNextAvailableNumber = (type: PlayerType): number => {
+    // Determine numbering per side, starting from 1 for each team
+    const assignedNumbers = players.value
+      .filter(p => p.type === type)
+      .map(p => p.assignedNumber)
+      .filter(n => n !== undefined)
     
     // Try numbers 1-9 first, then 0
     for (let i = 1; i <= 9; i++) {
@@ -132,12 +269,28 @@ export function useGameState() {
   }
   
   // UNIFIED: Single function to handle all ball carrier state
-  const setBallCarrier = (player: Player | null) => {
+  const setBallCarrier = (
+    player: Player | null,
+    opts: { updateTimedPassSource?: boolean } = {}
+  ) => {
+    console.log('[setBallCarrier] CALLED', {
+      player: player ? `${player.type}-${player.id}` : null,
+      playerPos: player ? { x: player.x, y: player.y } : null,
+      ballPosBefore: { x: ball.value.x, y: ball.value.y },
+      opts
+    })
+
+    const shouldUpdateTimedPass = opts.updateTimedPassSource ?? true
+    const previousAttachment = ball.value.attachedTo
+    const previousCarrier = previousAttachment
+      ? players.value.find(p => p.id === previousAttachment.id && p.type === previousAttachment.type) || null
+      : null
+
     // Clear all players' carrying state first
     players.value.forEach(p => {
       p.isCarryingBall = false
     })
-    
+
     if (player) {
       // Set the new ball carrier
       player.isCarryingBall = true
@@ -145,24 +298,70 @@ export function useGameState() {
         type: player.type,
         id: player.id
       }
-      
+
       // Position ball near player
       const playerRadius = canvasConfig.playerRadius
       ball.value.x = player.x + playerRadius * 0.8
       ball.value.y = player.y + playerRadius * 0.4
     } else {
-      // No ball carrier
+      // Detach but PRESERVE position explicitly
+      const preservedX = ball.value.x
+      const preservedY = ball.value.y
       ball.value.attachedTo = null
+      ball.value.x = preservedX
+      ball.value.y = preservedY
+
+      console.log('[setBallCarrier] Ball detached, position preserved:', {
+        x: ball.value.x,
+        y: ball.value.y
+      })
+    }
+
+    console.log('[setBallCarrier] AFTER', {
+      ballPosAfter: { x: ball.value.x, y: ball.value.y },
+      attachedTo: ball.value.attachedTo
+    })
+
+    if (
+      shouldUpdateTimedPass &&
+      previousCarrier &&
+      player &&
+      (previousCarrier.id !== player.id || previousCarrier.type !== player.type)
+    ) {
+      players.value.forEach(p => {
+        if (!p.timedPass) return
+        if (
+          p.timedPass.fromPlayerId === previousCarrier.id &&
+          p.timedPass.fromPlayerType === previousCarrier.type
+        ) {
+          p.timedPass.fromPlayerId = player.id
+          p.timedPass.fromPlayerType = player.type
+
+          const seq = currentSequenceData.value
+          if (seq) {
+            const playerKey = `${p.type}-${p.id}`
+            const stored = seq.playerData[playerKey]
+            if (
+              stored?.timedPass &&
+              stored.timedPass.fromPlayerId === previousCarrier.id &&
+              stored.timedPass.fromPlayerType === previousCarrier.type
+            ) {
+              stored.timedPass.fromPlayerId = player.id
+              stored.timedPass.fromPlayerType = player.type
+            }
+          }
+        }
+      })
     }
   }
   
   // Legacy functions for backward compatibility
-  const attachBallToPlayer = (player: Player) => {
-    setBallCarrier(player)
+  const attachBallToPlayer = (player: Player, opts?: { updateTimedPassSource?: boolean }) => {
+    setBallCarrier(player, opts)
   }
   
-  const detachBall = () => {
-    setBallCarrier(null)
+  const detachBall = (opts?: { updateTimedPassSource?: boolean }) => {
+    setBallCarrier(null, opts)
   }
   
   // Phase management
@@ -174,20 +373,20 @@ export function useGameState() {
   
   const addPhase = () => {
     saveCurrentPhaseState()
-    
-    const newPhaseId = phases.value.length > 0 ? 
+
+    const newPhaseId = phases.value.length > 0 ?
       Math.max(...phases.value.map(p => p.id)) + 1 : 1
-    
+
     phases.value.push({
       id: newPhaseId,
       name: `Phase ${newPhaseId}`,
       playerStates: [],
-      ballState: { x: 0, y: 0, attachedTo: null },
+      ballState: JSON.parse(JSON.stringify(ball.value)),
       sequences: []
     })
-    
+
     selectPhase(newPhaseId)
-    
+
     // Automatically create the first sequence for the new phase
     addSequence()
   }
@@ -242,8 +441,9 @@ export function useGameState() {
           players.value.forEach(player => {
             player.originalPosition = { x: player.x, y: player.y }
             player.path = []
-            player.mode = 'drag'
+            player.mode = 'path'
             player.isSelected = false
+            player.timedPass = undefined // Clear old timed pass data
           })
         }
       }
@@ -253,7 +453,8 @@ export function useGameState() {
         const currentSequenceData = phaseData.sequences.find(s => s.id === currentSequence.value)
         if (currentSequenceData && currentSequenceData.activePlayerIds) {
           players.value.forEach(player => {
-            player.isLooping = currentSequenceData.activePlayerIds.includes(player.id)
+            const playerId = `${player.type}-${player.id}`
+            player.isLooping = currentSequenceData.activePlayerIds.includes(playerId)
           })
         }
       }
@@ -268,7 +469,8 @@ export function useGameState() {
     if (seq) {
       loadPlayerDataFromSequence(seq)
       players.value.forEach(p => {
-        p.isLooping = seq.activePlayerIds.includes(p.id)
+        const playerId = `${p.type}-${p.id}`
+        p.isLooping = seq.activePlayerIds.includes(playerId)
       })
     }
   }
@@ -276,10 +478,19 @@ export function useGameState() {
   const addSequence = () => {
     const phase = currentPhaseData.value
     if (!phase) return
-    
-    const newSequenceId = phase.sequences.length > 0 ? 
+
+    const newSequenceId = phase.sequences.length > 0 ?
       Math.max(...phase.sequences.map(s => s.id)) + 1 : 1
-    
+
+    // Capture current ball state with actual position
+    const currentBallState = {
+      x: ball.value.x,
+      y: ball.value.y,
+      attachedTo: ball.value.attachedTo ? { ...ball.value.attachedTo } : null
+    }
+
+    console.log('[addSequence] Creating new sequence with ball state:', currentBallState)
+
     const newSequence: Sequence = {
       id: newSequenceId,
       name: `Sequence ${newSequenceId}`,
@@ -287,17 +498,17 @@ export function useGameState() {
       ballEvents: [],
       isActive: false,
       playerData: {},
-      ballState: JSON.parse(JSON.stringify(ball.value)),
+      ballState: currentBallState,
       finalPlayerPositions: {},
       startingPlayerPositions: {}
     }
-    
+
     // Snapshot current positions
     players.value.forEach(player => {
       const playerId = `${player.type}-${player.id}`
       newSequence.startingPlayerPositions![playerId] = { x: player.x, y: player.y }
     })
-    
+
     phase.sequences.push(newSequence)
     selectSequence(newSequenceId)
   }
@@ -322,36 +533,50 @@ export function useGameState() {
   }
   
   const loadPlayerDataFromSequence = (sequence: Sequence) => {
+    console.log('[loadPlayerDataFromSequence] CALLED', {
+      sequenceName: sequence.name,
+      hasBallState: !!sequence.ballState,
+      ballStateSaved: sequence.ballState,
+      ballPosBefore: { x: ball.value.x, y: ball.value.y }
+    })
+
     if (!sequence.playerData) return
-    
+
     players.value.forEach(player => {
       const playerId = `${player.type}-${player.id}`
       const savedData = sequence.playerData[playerId]
-      
+
       if (savedData) {
         player.path = savedData.path ? [...savedData.path] : []
         player.speed = savedData.speed || 100
         player.sequenceDelay = savedData.sequenceDelay || 0
-        player.mode = savedData.mode || 'drag'
-        player.isLooping = sequence.activePlayerIds.includes(player.id)
+        player.mode = savedData.mode || 'path'
+        player.isLooping = sequence.activePlayerIds.includes(playerId)
+        player.timedPass = savedData.timedPass ? JSON.parse(JSON.stringify(savedData.timedPass)) : undefined
       } else {
         // Reset to defaults
         player.path = []
         player.originalPosition = { x: player.x, y: player.y }
         player.speed = 100
         player.sequenceDelay = 0
-        player.mode = 'drag'
+        player.mode = 'path'
         player.isLooping = false
+        player.timedPass = undefined
       }
     })
-    
+
     // Restore ball state
     if (sequence.ballState) {
+      console.log('[loadPlayerDataFromSequence] Restoring ball state from sequence', sequence.ballState)
       ball.value.x = sequence.ballState.x
       ball.value.y = sequence.ballState.y
-      ball.value.attachedTo = sequence.ballState.attachedTo ? 
+      ball.value.attachedTo = sequence.ballState.attachedTo ?
         { ...sequence.ballState.attachedTo } : null
     }
+
+    console.log('[loadPlayerDataFromSequence] AFTER', {
+      ballPosAfter: { x: ball.value.x, y: ball.value.y }
+    })
   }
   
   // Canvas management
@@ -361,10 +586,22 @@ export function useGameState() {
     canvasConfig.fieldWidth = width / 1.4
     canvasConfig.fieldHeight = height
     updateCanvasRadii()
-    
+
     // Update ball position to center
     ball.value.x = canvasConfig.fieldWidth * 0.5
     ball.value.y = canvasConfig.fieldHeight * 0.5
+
+    // Update all sequence ball states to match the new centered position
+    phases.value.forEach(phase => {
+      if (phase.sequences) {
+        phase.sequences.forEach(sequence => {
+          if (sequence.ballState && sequence.ballState.x === 0 && sequence.ballState.y === 0) {
+            sequence.ballState.x = ball.value.x
+            sequence.ballState.y = ball.value.y
+          }
+        })
+      }
+    })
   }
   
   const updateCanvasRadii = () => {
@@ -464,38 +701,6 @@ export function useGameState() {
     }
   }
 
-  // NEW: Load game state from backend
-  const loadGameState = async (playId: string): Promise<boolean> => {
-    try {
-      const response = await fetch(`http://localhost:8080/api/plays/${playId}`)
-      if (!response.ok) return false
-      
-      const play = await response.json()
-      const gameData = play.gameData
-      
-      if (gameData) {
-        // Restore all state
-        phases.value = gameData.phases || []
-        players.value = gameData.players || []
-        ball.value = gameData.ball || { x: 0, y: 0, attachedTo: null }
-        currentPhase.value = gameData.currentPhase || 1
-        currentSequence.value = gameData.currentSequence || 1
-        
-        // Update canvas config if available
-        if (gameData.canvasConfig) {
-          Object.assign(canvasConfig, gameData.canvasConfig)
-        }
-        
-        return true
-      }
-      
-      return false
-    } catch (error) {
-      console.error('Failed to load game state:', error)
-      return false
-    }
-  }
-  
   const resetToDefaults = () => {
     players.value = []
     ball.value = {
@@ -508,36 +713,28 @@ export function useGameState() {
       name: 'Phase 1',
       playerStates: [],
       ballState: { x: 0, y: 0, attachedTo: null },
-      sequences: []
+      sequences: [{
+        id: 1,
+        name: 'Sequence 1',
+        activePlayerIds: [],
+        ballEvents: [],
+        isActive: false,
+        playerData: {},
+        ballState: { x: 0, y: 0, attachedTo: null },
+        finalPlayerPositions: {},
+        startingPlayerPositions: {}
+      }]
     }]
     currentPhase.value = 1
     currentSequence.value = 1
-    isSequenceMode.value = false
+    isSequenceMode.value = true
     isRecording.value = false
+    clearDraft()
   }
   
-  const getFullPlayState = () => {
-    const fullPlaySequences = []
-    
-    // Create a deep copy to avoid modifying the original state
-    const allPhases = JSON.parse(JSON.stringify(phases.value))
-
-    for (const phase of allPhases) {
-      if (phase.sequences && phase.sequences.length > 0) {
-        // Sort sequences by ID
-        const sortedSequences = phase.sequences.sort((a: Sequence, b: Sequence) => a.id - b.id)
-        
-        for (const sequence of sortedSequences) {
-          fullPlaySequences.push({
-            sequence,
-            playerStates: phase.playerStates,
-            ballState: phase.ballState
-          })
-        }
-      }
-    }
-    return fullPlaySequences
-  }
+  // Initialize draft and autosave changes
+  loadDraftIfPresent()
+  watch([players, phases, ball, currentPhase, currentSequence], persistDraft, { deep: true })
   
   return {
     // State
@@ -550,6 +747,7 @@ export function useGameState() {
     isRecording,
     isFullscreen,
     canvasConfig,
+    attackingType,
     
     // Computed
     currentPhaseData,
@@ -576,8 +774,11 @@ export function useGameState() {
     toggleFullscreen,
     getPlayerStates,
     resetToDefaults,
-    getFullPlayState,
+    capturePlayerStartingPosition,
     saveGameState,
-    loadGameState
+    clearDraft,
+    persistDraft,
+    setAttackingType,
+    toggleAttackingType
   }
 } 

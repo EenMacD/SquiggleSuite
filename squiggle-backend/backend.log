@@ -1,7 +1,0 @@
-2025/07/22 00:02:00 Successfully loaded .env file
-2025/07/22 00:02:00 AWS_REGION: us-east-1
-2025/07/22 00:02:00 DYNAMODB_ENDPOINT: http://localhost:8000
-2025/07/22 00:02:00 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/07/22 00:02:00 Successfully connected to DynamoDB
-2025/07/22 00:02:00 Server starting on :8080
-2025/07/22 00:08:38 Server exiting

@@ -1,5 +1,6 @@
 <template>
   <div class="player-controls" v-if="availableSequences.length > 0">
+    <h4 class="section-title">Players Selected for Current Sequence</h4>
     <div class="player-list">
       <div 
         v-for="player in players" 
@@ -15,9 +16,9 @@
       >
         <span class="player-icon">{{ player.type === 'attacking' ? 'R' : 'B' }}{{ player.id }}</span>
         <span class="player-status">
-          {{ player.isLooping ? 'INCLUDED' : canActivatePlayer(player) ? 'READY' : 'NEEDS PATH' }}
-          <span v-if="canActivatePlayer(player) && player.sequenceDelay !== undefined" class="player-delay">
-            {{ player.sequenceDelay }}ms delay
+          {{ canActivatePlayer(player) ? 'READY' : 'NEEDS PATH' }}
+          <span v-if="canActivatePlayer(player) && player.sequenceDelay !== undefined && player.sequenceDelay > 0" class="player-delay">
+            {{ player.sequenceDelay }}ms
           </span>
         </span>
       </div>
@@ -25,6 +26,7 @@
     
     <div class="player-actions">
       <button 
+        data-cy="select-all-players-btn"
         @click="selectAllPlayers" 
         class="control-btn select-all"
         :disabled="!hasPlayersWithPaths"
@@ -95,12 +97,16 @@ const deselectAllPlayers = () => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  margin-bottom: 1rem;
-  padding: 1rem;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-  border-left: 4px solid #2196F3;
+  margin-top: 1rem;
+}
+
+.section-title {
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.75rem 0;
 }
 
 .player-list {
@@ -113,62 +119,71 @@ const deselectAllPlayers = () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0.75rem;
-  border: 2px solid #e0e0e0;
-  border-radius: 8px;
-  background: white;
+  padding: 0.875rem;
+  border: 1.5px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
-  transition: all 0.2s ease;
-  min-width: 80px;
+  transition: all .25s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 90px;
   text-align: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.player-control-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity .25s ease;
 }
 
 .player-control-btn:hover:not(.no-path) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(45, 127, 249, 0.3);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.player-control-btn.attacking {
-  border-color: #ff4444;
+.player-control-btn:hover:not(.no-path)::before {
+  opacity: 1;
 }
 
-.player-control-btn.attacking:hover:not(.no-path) {
-  border-color: #ff4444;
-  background: rgba(255, 68, 68, 0.1);
+.player-control-btn:active:not(.no-path) {
+  transform: translateY(0);
+  transition-duration: .1s;
 }
 
-.player-control-btn.attacking.active {
-  background: #ff4444;
-  border-color: #ff4444;
-  color: white;
-  animation: pulse 2s infinite;
+.player-control-btn.active {
+  border: 1.5px solid rgba(45, 127, 249, 0.8);
+  background: rgba(45, 127, 249, 0.12);
+  box-shadow:
+    0 2px 8px rgba(45, 127, 249, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.player-control-btn.defensive {
-  border-color: #4444ff;
-}
-
-.player-control-btn.defensive:hover:not(.no-path) {
-  border-color: #4444ff;
-  background: rgba(68, 68, 255, 0.1);
-}
-
-.player-control-btn.defensive.active {
-  background: #4444ff;
-  border-color: #4444ff;
-  color: white;
-  animation: pulseBlue 2s infinite;
+.player-control-btn.active::before {
+  background: linear-gradient(135deg, rgba(45, 127, 249, 0.15) 0%, transparent 50%);
+  opacity: 1;
 }
 
 .player-control-btn.no-path {
-  opacity: 0.5;
+  opacity: 0.35;
   cursor: not-allowed;
-  border-color: #ccc;
-  color: #999;
+  border-color: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+  transform: none;
 }
 
 .player-icon {
-  font-weight: bold;
+  font-weight: 500;
   font-size: 0.9rem;
   margin-bottom: 0.25rem;
 }
@@ -183,7 +198,7 @@ const deselectAllPlayers = () => {
 .player-delay {
   display: block;
   font-size: 0.6rem;
-  color: #666;
+  color: var(--muted);
   margin-top: 0.2rem;
   font-weight: 400;
   text-transform: none;
@@ -198,38 +213,89 @@ const deselectAllPlayers = () => {
 }
 
 .control-btn {
+  -webkit-font-smoothing: antialiased;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 8px;
+  gap: 0.625rem;
+  padding: 0.75rem 1.25rem;
+  min-height: 44px;
+  border: 1.5px solid transparent;
+  border-radius: 10px;
   cursor: pointer;
-  font-weight: 500;
-  font-size: 0.8rem;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  font-weight: 600;
+  font-size: 0.875rem;
+  letter-spacing: .01em;
+  transition: all .25s cubic-bezier(0.4, 0, 0.2, 1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--btn-text);
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.control-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(45, 127, 249, 0.4);
+}
+
+.control-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+
+.control-btn:hover:not(:disabled)::before {
+  opacity: 1;
 }
 
 .control-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.control-btn:active:not(:disabled) {
+  transform: translateY(0);
+  transition-duration: .1s;
 }
 
 .control-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
   transform: none;
 }
 
 .control-btn.select-all {
-  background: linear-gradient(135deg, #4CAF50, #2E7D32);
-  color: white;
+  background: linear-gradient(135deg, #2D7FF9 0%, #1F6FE6 100%);
+  color: #fff;
+  border-color: transparent;
+  box-shadow:
+    0 2px 8px rgba(45, 127, 249, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.control-btn.select-all::before {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, transparent 50%);
+}
+
+.control-btn.select-all:hover:not(:disabled) {
+  background: linear-gradient(135deg, #3D8FFF 0%, #2D7FF9 100%);
+  box-shadow:
+    0 6px 16px rgba(45, 127, 249, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .control-btn.deselect-all {
-  background: linear-gradient(135deg, #F44336, #D32F2F);
-  color: white;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--btn-text);
 }
 
 .control-btn .icon {
@@ -237,27 +303,5 @@ const deselectAllPlayers = () => {
   line-height: 1;
 }
 
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7);
-  }
-  70% {
-    box-shadow: 0 0 0 10px rgba(255, 68, 68, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(255, 68, 68, 0);
-  }
-}
-
-@keyframes pulseBlue {
-  0% {
-    box-shadow: 0 0 0 0 rgba(68, 68, 255, 0.7);
-  }
-  70% {
-    box-shadow: 0 0 0 10px rgba(68, 68, 255, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(68, 68, 255, 0);
-  }
-}
+/* Removed pulsating animations for cleaner, consistent UI */
 </style> 

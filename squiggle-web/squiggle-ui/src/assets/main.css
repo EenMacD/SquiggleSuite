@@ -69,4 +69,23 @@
   .safe-area-right {
     padding-right: max(1rem, env(safe-area-inset-right));
   }
-} 
+}
+
+/* Shepherd.js tour highlighting */
+.tour-highlight {
+  position: relative;
+  box-shadow: 0 0 0 3px var(--accent);
+  border-radius: 999px;
+  z-index: 3001;
+}
+
+.shepherd-element {
+  z-index: 3002;
+}
+
+/* Allow clicking underlying targets even with Shepherd modal overlay on */
+.shepherd-modal-overlay-container,
+.shepherd-modal-overlay-container.shepherd-modal-is-visible,
+.shepherd-modal-overlay-container.shepherd-modal-is-visible path {
+  pointer-events: none !important;
+}
