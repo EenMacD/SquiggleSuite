@@ -1,98 +1,93 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { Play, CreatePlayRequest } from '../types/play'
-import { useSessionStore } from './sessionStore'
 
 export const usePlaysStore = defineStore('plays', () => {
   const plays = ref<Play[]>([])
-  const sessionStore = useSessionStore()
 
-  // Load from session storage on initialization
+  // Load from local storage on initialization (survives refresh/reopen)
   const loadPlays = () => {
     try {
-      const stored = sessionStorage.getItem('squiggle_plays')
+      const stored = localStorage.getItem('squiggle_plays')
       if (stored) {
-        plays.value = JSON.parse(stored)
-        console.log('Plays loaded from session storage:', plays.value.length)
+        const parsed = JSON.parse(stored)
+        plays.value = Array.isArray(parsed)
+          ? parsed.map((play: Play) => ({
+              ...play,
+              ballEvents: Array.isArray(play.ballEvents) ? play.ballEvents : []
+            }))
+          : []
       }
     } catch (error) {
-      console.error('Failed to load plays from session storage:', error)
+      console.error('Failed to load plays from local storage:', error)
       plays.value = []
     }
   }
 
-  // Save to session storage
+  // Save to local storage
   const savePlays = () => {
     try {
-      sessionStorage.setItem('squiggle_plays', JSON.stringify(plays.value))
+      localStorage.setItem('squiggle_plays', JSON.stringify(plays.value))
     } catch (error) {
-      console.error('Failed to save plays to session storage:', error)
+      throw error
     }
   }
 
-  // Create play with session check
+  // Create play (persist to durable storage; do not tie to session TTL)
   const createPlay = (playData: CreatePlayRequest): Play => {
-    if (!sessionStore.isSessionValid) {
-      clearPlays()
-      throw new Error('Session expired')
-    }
-
-    sessionStore.updateActivity()
-
     const newPlay: Play = {
       id: `play_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: playData.name,
       createdAt: new Date().toISOString(),
-      playerStates: playData.playerStates
+      playerStates: playData.playerStates,
+      ballEvents: playData.ballEvents
     }
 
-    plays.value.push(newPlay)
-    savePlays()
-    return newPlay
+    // Attempt to write without mutating state first (avoid partial updates on quota error)
+    const candidate = [...plays.value, newPlay]
+    const payload = JSON.stringify(candidate)
+    try {
+      localStorage.setItem('squiggle_plays', payload)
+      plays.value = candidate
+      return newPlay
+    } catch (err: any) {
+      // Surface a specific error marker for quota issues
+      const name = err?.name || ''
+      if (name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED' || name === 'SecurityError') {
+        throw new Error('STORAGE_QUOTA_EXCEEDED')
+      }
+      throw err instanceof Error ? err : new Error('Failed to save play')
+    }
   }
 
-  // List plays with session check
+  // List plays (unaffected by session TTL)
   const listPlays = (): Play[] => {
-    if (!sessionStore.isSessionValid) {
-      clearPlays()
-      return []
-    }
-
-    sessionStore.updateActivity()
     return plays.value
   }
 
-  // Get play with session check
+  // Get play
   const getPlay = (id: string): Play | null => {
-    if (!sessionStore.isSessionValid) {
-      clearPlays()
-      return null
-    }
-
-    sessionStore.updateActivity()
     return plays.value.find(play => play.id === id) || null
   }
 
-  // Delete play with session check
+  // Delete play
   const deletePlay = (id: string): void => {
-    if (!sessionStore.isSessionValid) {
-      clearPlays()
-      return
-    }
-
-    sessionStore.updateActivity()
-    
     const index = plays.value.findIndex(play => play.id === id)
     if (index !== -1) {
       plays.value.splice(index, 1)
-      savePlays()
+      try {
+        savePlays()
+      } catch (err) {
+        // If deletion fails due to storage issues, we at least updated RAM state; log quietly
+        console.error('Failed to persist deletion:', err)
+      }
     }
   }
 
   // Clear all plays
   const clearPlays = () => {
     plays.value = []
-    sessionStorage.removeItem('squiggle_plays')
+    localStorage.removeItem('squiggle_plays')
   }
 
   // Initialize store

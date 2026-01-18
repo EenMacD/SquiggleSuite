@@ -41,7 +41,9 @@
           @click="handleSave"
           :disabled="!canSave"
         >
-          <span class="icon">💾</span>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14a2 2 0 0 0 2-2v-5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
           Save Play
         </button>
       </div>
@@ -102,7 +104,7 @@ watch(() => props.show, (newShow) => {
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
-  z-index: 1000;
+  z-index: 2999;
   animation: fadeIn 0.2s ease-out;
 }
 
@@ -111,30 +113,31 @@ watch(() => props.show, (newShow) => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 1001;
+  z-index: 3000;
   animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dialog-content {
-  background: rgba(0, 0, 0, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 2rem;
   min-width: 400px;
   max-width: 500px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
 }
 
 .dialog-title {
-  color: white;
-  font-size: 1.4rem;
-  font-weight: 600;
+  color: var(--text);
+  font-size: 1.2rem;
+  font-weight: 700;
   margin: 0 0 0.75rem 0;
   text-align: center;
 }
 
 .dialog-description {
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--muted);
   font-size: 0.95rem;
   line-height: 1.4;
   margin: 0 0 1.5rem 0;
@@ -147,37 +150,37 @@ watch(() => props.show, (newShow) => {
 
 .input-label {
   display: block;
-  color: white;
+  color: var(--text);
   font-size: 0.9rem;
-  font-weight: 500;
+  font-weight: 600;
   margin-bottom: 0.5rem;
 }
 
 .play-name-input {
   width: 100%;
   padding: 0.875rem 1rem;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-  color: white;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
   font-size: 1rem;
-  transition: all 0.2s ease;
+  transition: border-color .2s var(--ease), box-shadow .2s var(--ease), background-color .2s var(--ease);
   box-sizing: border-box;
 }
 
 .play-name-input:focus {
   outline: none;
-  border-color: rgba(255, 255, 255, 0.4);
-  background: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--focus);
+  background: var(--surface-2);
 }
 
 .play-name-input::placeholder {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--muted);
 }
 
 .input-hint {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--muted);
   font-size: 0.8rem;
   margin-top: 0.5rem;
   text-align: right;
@@ -191,12 +194,14 @@ watch(() => props.show, (newShow) => {
 .dialog-btn {
   flex: 1;
   padding: 0.875rem 1.5rem;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   font-size: 0.95rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background-color .2s var(--ease), border-color .2s var(--ease), box-shadow .2s var(--ease), color .2s var(--ease);
+  border: 1px solid var(--btn-border);
+  background: var(--btn-bg);
+  color: var(--btn-text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -204,37 +209,26 @@ watch(() => props.show, (newShow) => {
 }
 
 .dialog-btn.cancel {
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
+  background: transparent;
 }
+
+.dialog-btn.cancel:hover { background: var(--btn-hover-bg); border-color: var(--border-strong); }
 
 .dialog-btn.save {
-  background: linear-gradient(135deg, #4CAF50, #2E7D32);
-  color: white;
-  border: none;
+  background: var(--btn-primary-bg);
+  border-color: transparent;
+  color: var(--btn-primary-text);
 }
-
-.dialog-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
-.dialog-btn.cancel:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-.dialog-btn.save:hover:not(:disabled) {
-  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
-}
+.dialog-btn.save:hover:not(:disabled) { background: var(--btn-primary-hover-bg); }
+.dialog-btn.save:active:not(:disabled) { background: var(--btn-primary-active-bg); }
 
 .dialog-btn:disabled {
-  opacity: 0.5;
+  opacity: var(--btn-disabled-opacity);
   cursor: not-allowed;
-  transform: none;
 }
 
 .icon {
-  font-size: 1.1rem;
+  width: 18px; height: 18px;
 }
 
 @keyframes fadeIn {

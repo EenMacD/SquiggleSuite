@@ -3,7 +3,7 @@
   <div v-if="showDialog" class="dialog-backdrop" @click="closeDialog"></div>
 
   <!-- Player Count Dialog -->
-  <div v-if="showDialog" class="dialog">
+  <div v-if="showDialog" class="dialog" data-cy="player-dialog">
     <div class="dialog-content">
       <h3 class="dialog-title">
         {{ dialogType === 'attacking' ? 'Add Red Players' : 'Add Blue Players' }}
@@ -11,7 +11,7 @@
       
       <!-- Player Count Section -->
       <div class="number-input">
-        <button class="number-btn" @click="decrementCount">-</button>
+        <button class="number-btn" @click="decrementCount" data-cy="player-count-decrement">-</button>
         <input 
           type="number" 
           :value="selectedCount"
@@ -19,7 +19,7 @@
           min="1" 
           max="16"
         >
-        <button class="number-btn" @click="incrementCount">+</button>
+        <button class="number-btn" @click="incrementCount" data-cy="player-count-increment">+</button>
       </div>
       
       <!-- NEW: Formation Selection Section -->
@@ -111,29 +111,47 @@
           </div>
         </div>
         
-        <!-- Save Custom Formation -->
-        <div v-if="hasCustomChanges" class="save-formation-section">
-          <input 
-            v-model="formationName"
-            placeholder="Formation name (e.g., 'Attacking Line', 'Defensive Wall')"
-            class="formation-name-input"
-            @keyup.enter="saveFormation"
-          />
+        <!-- Save Custom Formation (collapsible) -->
+        <div v-if="hasCustomChanges" class="save-formation-wrapper">
           <button 
-            @click="saveFormation" 
-            class="save-formation-btn"
-            :disabled="!canSaveFormation"
+            class="save-formation-toggle" 
+            @click="showSaveFormation = !showSaveFormation"
+            :aria-expanded="showSaveFormation ? 'true' : 'false'"
+            aria-controls="save-formation-panel"
           >
-            <span class="icon">💾</span>
-            Save Formation
+            <span class="chevron" :class="{ open: showSaveFormation }">▸</span>
+            Looking to save formation??
           </button>
+
+          <transition name="fade-collapse">
+            <div 
+              v-show="showSaveFormation" 
+              id="save-formation-panel" 
+              class="save-formation-section"
+            >
+              <input 
+                v-model="formationName"
+                placeholder="Formation name (e.g., 'Attacking Line', 'Defensive Wall')"
+                class="formation-name-input"
+                @keyup.enter="saveFormation"
+              />
+              <button 
+                @click="saveFormation" 
+                class="save-formation-btn"
+                :disabled="!canSaveFormation"
+              >
+                <span class="icon">💾</span>
+                Save Formation
+              </button>
+            </div>
+          </transition>
         </div>
       </div>
       
       <!-- Dialog Actions -->
       <div class="dialog-actions">
         <button class="dialog-btn cancel" @click="closeDialog">Cancel</button>
-        <button class="dialog-btn confirm" @click="confirmPlayerCount">
+        <button class="dialog-btn confirm" @click="confirmPlayerCount" data-cy="confirm-add-players">
           Add {{ selectedCount }} Player{{ selectedCount > 1 ? 's' : '' }}
         </button>
       </div>
@@ -203,6 +221,7 @@ const isDragging = ref(false)
 const dragPlayerIndex = ref(-1)
 const formationName = ref('')
 const savedFormations = ref<Formation[]>([])
+const showSaveFormation = ref(false)
 
 // Delete formation confirmation state
 const showDeleteConfirm = ref(false)
@@ -290,28 +309,33 @@ const updateParentCount = () => {
 }
 
 // NEW: Formation logic
+// Stable default position for a given index among the new players being added,
+// offset by how many players of this type already exist on the field.
+const defaultPositionForIndex = (index: number): { x: number, y: number } => {
+  const existingOfType = existingPlayersOfType.value.length
+  const totalExisting = existingOfType + index
+  const row = Math.floor(totalExisting / 5)
+  const col = totalExisting % 5
+
+  const baseX = 0.5 // Center of field (relative)
+  const baseY = dialogType.value === 'attacking' ? 0.75 : 0.25
+  const horizontalSpacing = 0.08
+  const verticalSpacing = 0.05
+
+  return {
+    x: baseX + (col - 2) * horizontalSpacing,
+    y: dialogType.value === 'attacking'
+      ? baseY + row * verticalSpacing
+      : baseY - row * verticalSpacing
+  }
+}
+
+// Generate an initial list of default positions for the current selectedCount
 const generateDefaultFormationPositions = (): Array<{ x: number, y: number }> => {
   const positions: Array<{ x: number, y: number }> = []
-  
   for (let i = 0; i < selectedCount.value; i++) {
-    const existingOfType = existingPlayersOfType.value.length
-    const totalExisting = existingOfType + i
-    const row = Math.floor(totalExisting / 5)
-    const col = totalExisting % 5
-    
-    const baseX = 0.5 // Center of field (relative)
-    const baseY = dialogType.value === 'attacking' ? 0.75 : 0.25
-    const horizontalSpacing = 0.08
-    const verticalSpacing = 0.05
-    
-    positions.push({
-      x: baseX + (col - 2) * horizontalSpacing,
-      y: dialogType.value === 'attacking' 
-        ? baseY + row * verticalSpacing 
-        : baseY - row * verticalSpacing
-    })
+    positions.push(defaultPositionForIndex(i))
   }
-  
   return positions
 }
 
@@ -327,8 +351,17 @@ const getCurrentFormationPositions = (): Array<{ x: number, y: number }> => {
 }
 
 const initializeCustomPositions = () => {
-  if (selectedFormationType.value === 'custom' && customPositions.value.length !== selectedCount.value) {
-    customPositions.value = generateDefaultFormationPositions()
+  if (selectedFormationType.value !== 'custom') return
+  const target = selectedCount.value
+  const current = customPositions.value.length
+  if (current < target) {
+    // Append new default slots without touching existing custom placements
+    for (let i = current; i < target; i++) {
+      customPositions.value.push(defaultPositionForIndex(i))
+    }
+  } else if (current > target) {
+    // Trim extras while preserving initial custom placements
+    customPositions.value = customPositions.value.slice(0, target)
   }
 }
 
@@ -614,6 +647,7 @@ const closeDialog = () => {
   formationName.value = ''
   isDragging.value = false
   dragPlayerIndex.value = -1
+  showSaveFormation.value = false
   
   emit('close-dialog')
 }
@@ -653,6 +687,49 @@ const convertToCanvasCoords = (offsetX: number, offsetY: number, fieldX: number,
 </script>
 
 <style scoped>
+/* Collapsible save formation UI */
+.save-formation-wrapper {
+  margin-top: 0.75rem;
+}
+
+.save-formation-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  text-align: left;
+}
+
+.save-formation-toggle:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.chevron {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+.chevron.open {
+  transform: rotate(90deg);
+}
+
+/* Smooth expand/collapse */
+.fade-collapse-enter-active,
+.fade-collapse-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-collapse-enter-from,
+.fade-collapse-leave-to {
+  opacity: 0;
+}
 .dialog-backdrop {
   position: fixed;
   top: 0;
@@ -661,7 +738,7 @@ const convertToCanvasCoords = (offsetX: number, offsetY: number, fieldX: number,
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
-  z-index: 1000;
+  z-index: 2999;
   animation: fadeIn 0.2s ease-out;
 }
 
@@ -670,23 +747,23 @@ const convertToCanvasCoords = (offsetX: number, offsetY: number, fieldX: number,
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 1001;
+  z-index: 3000;
   animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dialog-content {
-  background: rgba(0, 0, 0, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 1.5rem;
   min-width: 300px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-2);
 }
 
 .dialog-title {
-  color: white;
-  font-size: 1.2rem;
-  font-weight: 500;
+  color: var(--text);
+  font-size: 1.1rem;
+  font-weight: 700;
   margin: 0 0 1.5rem 0;
   text-align: center;
 }
@@ -702,34 +779,32 @@ const convertToCanvasCoords = (offsetX: number, offsetY: number, fieldX: number,
 .number-btn {
   width: 40px;
   height: 40px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-  border-radius: 10px;
-  font-size: 1.4rem;
+  border: 1px solid var(--btn-border);
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  border-radius: var(--radius-sm);
+  font-size: 1.2rem;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color .2s var(--ease), border-color .2s var(--ease), box-shadow .2s var(--ease);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.number-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.2);
-}
+.number-btn:hover { background: var(--btn-hover-bg); border-color: var(--border-strong); }
 
 .number-input input {
   width: 80px;
   height: 40px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  color: white;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
   text-align: center;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   padding: 0;
 }
+.number-input input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--focus); }
 
 .number-input input::-webkit-inner-spin-button,
 .number-input input::-webkit-outer-spin-button {
@@ -742,14 +817,14 @@ const convertToCanvasCoords = (offsetX: number, offsetY: number, fieldX: number,
 }
 
 .section-title {
-  color: white;
+  color: var(--text);
   font-size: 1rem;
-  font-weight: 500;
+  font-weight: 700;
   margin: 0 0 0.5rem 0;
 }
 
 .section-description {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--muted);
   font-size: 0.85rem;
   margin: 0 0 1rem 0;
   line-height: 1.3;
@@ -764,26 +839,23 @@ const convertToCanvasCoords = (offsetX: number, offsetY: number, fieldX: number,
 .formation-tab {
   flex: 1;
   padding: 0.75rem;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  color: white;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: var(--radius-sm);
+  color: var(--btn-text);
   font-size: 0.85rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color .2s var(--ease), border-color .2s var(--ease), color .2s var(--ease);
   text-align: center;
 }
 
-.formation-tab:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.2);
-}
+.formation-tab:hover:not(:disabled) { background: var(--btn-hover-bg); border-color: var(--border-strong); }
 
 .formation-tab.active {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.3);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  background: var(--btn-primary-bg);
+  border-color: transparent;
+  color: var(--btn-primary-text);
 }
 
 .formation-tab:disabled {
@@ -792,9 +864,9 @@ const convertToCanvasCoords = (offsetX: number, offsetY: number, fieldX: number,
 }
 
 .formation-preview {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 1rem;
 }
 
@@ -805,11 +877,7 @@ const convertToCanvasCoords = (offsetX: number, offsetY: number, fieldX: number,
   margin-bottom: 0.75rem;
 }
 
-.preview-title {
-  color: white;
-  font-size: 0.9rem;
-  font-weight: 500;
-}
+.preview-title { color: var(--text); font-size: 0.9rem; font-weight: 600; }
 
 .show-existing-toggle {
   display: flex;
@@ -818,11 +886,7 @@ const convertToCanvasCoords = (offsetX: number, offsetY: number, fieldX: number,
   cursor: pointer;
 }
 
-.show-existing-toggle input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: #FF4444;
-}
+.show-existing-toggle input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
 
 .toggle-text {
   color: rgba(255, 255, 255, 0.8);
@@ -832,15 +896,12 @@ const convertToCanvasCoords = (offsetX: number, offsetY: number, fieldX: number,
 .mini-field {
   width: 100%;
   height: auto;
-  background: rgba(0, 0, 0, 0.3);
+  background: #0e1115;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border);
   transition: border-color 0.2s ease;
 }
-
-.mini-field:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-}
+.mini-field:hover { border-color: var(--border-strong); }
 
 .dialog-actions {
   display: flex;
@@ -879,61 +940,15 @@ const convertToCanvasCoords = (offsetX: number, offsetY: number, fieldX: number,
 }
 
 /* NEW: Save Formation Section */
-.save-formation-section {
-  margin-top: 1rem;
-  padding: 1rem;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-}
+.save-formation-section { margin-top: 1rem; padding: 1rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 
-.formation-name-input {
-  width: 100%;
-  padding: 0.75rem;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  color: white;
-  font-size: 0.9rem;
-  margin-bottom: 0.75rem;
-}
+.formation-name-input { width: 100%; padding: 0.75rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 0.9rem; margin-bottom: 0.75rem; }
+.formation-name-input::placeholder { color: var(--muted); }
+.formation-name-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--focus); }
 
-.formation-name-input::placeholder {
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.formation-name-input:focus {
-  outline: none;
-  border-color: rgba(255, 255, 255, 0.3);
-  background: rgba(255, 255, 255, 0.15);
-}
-
-.save-formation-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  background: linear-gradient(135deg, #4CAF50, #2E7D32);
-  border: none;
-  border-radius: 8px;
-  color: white;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  width: 100%;
-  justify-content: center;
-}
-
-.save-formation-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
-}
-
-.save-formation-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
+.save-formation-btn { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; background: var(--btn-primary-bg); border: none; border-radius: var(--radius-sm); color: var(--btn-primary-text); font-weight: 600; cursor: pointer; transition: background-color .2s var(--ease); width: 100%; justify-content: center; }
+.save-formation-btn:hover:not(:disabled) { background: var(--btn-primary-hover-bg); }
+.save-formation-btn:disabled { opacity: var(--btn-disabled-opacity); cursor: not-allowed; }
 
 /* NEW: Saved Formations List */
 .saved-formations {
@@ -1003,25 +1018,8 @@ const convertToCanvasCoords = (offsetX: number, offsetY: number, fieldX: number,
   font-size: 0.8rem;
 }
 
-.delete-formation-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: rgba(255, 68, 68, 0.2);
-  color: #ff4444;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.8rem;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.delete-formation-btn:hover {
-  background: rgba(255, 68, 68, 0.4);
-  color: white;
-}
+.delete-formation-btn { width: 24px; height: 24px; border: 1px solid var(--btn-border); background: var(--btn-bg); color: var(--muted); border-radius: 6px; cursor: pointer; font-size: 0.8rem; transition: background-color .2s var(--ease), border-color .2s var(--ease), color .2s var(--ease); display: flex; align-items: center; justify-content: center; }
+.delete-formation-btn:hover { background: var(--btn-hover-bg); border-color: var(--border-strong); color: var(--text); }
 
 @keyframes fadeIn {
   from { opacity: 0; }

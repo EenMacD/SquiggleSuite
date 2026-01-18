@@ -73,7 +73,9 @@ export const playService = {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `squiggle-plays-${new Date().toISOString().split('T')[0]}.json`
+    const now = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    a.download = `squiggle-plays-${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.json`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -132,10 +134,27 @@ export const playService = {
                 return
               }
 
+              const validBallEvents = Array.isArray(play.ballEvents)
+                ? play.ballEvents.filter((event: any) => {
+                    return event &&
+                      typeof event.id === 'string' &&
+                      typeof event.startTimestamp === 'number' &&
+                      event.startPosition &&
+                      typeof event.startPosition.x === 'number' &&
+                      typeof event.startPosition.y === 'number' &&
+                      event.endPosition &&
+                      typeof event.endPosition.x === 'number' &&
+                      typeof event.endPosition.y === 'number' &&
+                      typeof event.durationMs === 'number' &&
+                      typeof event.type === 'string'
+                  })
+                : []
+
               // Create the play with validated data
               const newPlay: CreatePlayRequest = {
                 name: play.name,
-                playerStates: validPlayerStates
+                playerStates: validPlayerStates,
+                ballEvents: validBallEvents
               }
 
               playsStore.createPlay(newPlay)
