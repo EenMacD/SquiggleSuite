@@ -13,6 +13,7 @@ usage() {
   echo "  dev     - Run Vite dev server (http://localhost:5173)"
   echo "  preview - Build then run Vite preview server (http://localhost:4173)"
   echo "  build   - Build production assets (writes to squiggle-ui/dist)"
+  echo "  package - Build and zip the extension for Chrome Web Store"
 
   exit 1
 }
@@ -63,6 +64,19 @@ build() {
   rm -rf "$ROOT_DIR/extension"
   mkdir -p "$ROOT_DIR/extension"
   cp -r dist/* "$ROOT_DIR/extension/"
+  
+  echo "Build complete! The 'extension' directory is ready for Chrome, Edge, Firefox, and Opera."
+}
+
+package() {
+  build
+  echo "Packaging extension..."
+  rm -f extension.zip
+  # Zip the contents of the extension directory
+  cd "$ROOT_DIR/extension"
+  zip -r ../extension.zip .
+  echo "Package complete: extension.zip"
+  echo "You can now upload this file to the Chrome Web Store."
 }
 
 preview() {
@@ -78,6 +92,7 @@ case "$MODE" in
   dev) dev ;;
   preview) preview ;;
   build) build ;;
+  package) package ;;
 
   -h|--help|help) usage ;;
   *) echo "Unknown mode: $MODE" >&2; usage ;;
