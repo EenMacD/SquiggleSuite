@@ -23,12 +23,12 @@ jobs:
 
       - name: Install and Build
         run: |
-          cd squiggle-ui
+          cd squiggle-web/squiggle-ui
           npm ci
           npm run build
 
       - name: Debug Build Output
-        run: ls -R squiggle-ui/dist
+        run: ls -R squiggle-web/squiggle-ui/dist
 
       - name: Deploy to Cloudflare Pages
         env:
