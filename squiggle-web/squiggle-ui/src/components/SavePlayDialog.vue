@@ -102,8 +102,9 @@ watch(() => props.show, (newShow) => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px) saturate(180%);
+  -webkit-backdrop-filter: blur(8px) saturate(180%);
   z-index: 2999;
   animation: fadeIn 0.2s ease-out;
 }
@@ -118,29 +119,32 @@ watch(() => props.show, (newShow) => {
 }
 
 .dialog-content {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: rgba(30, 41, 59, 0.98);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(71, 85, 105, 0.4);
   border-radius: var(--radius);
   padding: 2rem;
   min-width: 400px;
   max-width: 500px;
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--shadow-xl);
   color: var(--text);
 }
 
 .dialog-title {
   color: var(--text);
-  font-size: 1.2rem;
+  font-size: 1.375rem;
   font-weight: 700;
-  margin: 0 0 0.75rem 0;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.5rem 0;
   text-align: center;
 }
 
 .dialog-description {
-  color: var(--muted);
-  font-size: 0.95rem;
-  line-height: 1.4;
-  margin: 0 0 1.5rem 0;
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  margin: 0 0 1.75rem 0;
   text-align: center;
 }
 
@@ -151,28 +155,29 @@ watch(() => props.show, (newShow) => {
 .input-label {
   display: block;
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
+  letter-spacing: -0.01em;
 }
 
 .play-name-input {
   width: 100%;
   padding: 0.875rem 1rem;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  background: rgba(51, 65, 85, 0.4);
+  border: 1px solid rgba(71, 85, 105, 0.4);
   border-radius: var(--radius-sm);
   color: var(--text);
   font-size: 1rem;
-  transition: border-color .2s var(--ease), box-shadow .2s var(--ease), background-color .2s var(--ease);
+  transition: all .2s var(--ease-out);
   box-sizing: border-box;
 }
 
 .play-name-input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px var(--focus);
-  background: var(--surface-2);
+  box-shadow: 0 0 0 3px var(--focus);
+  background: rgba(51, 65, 85, 0.6);
 }
 
 .play-name-input::placeholder {
@@ -181,7 +186,7 @@ watch(() => props.show, (newShow) => {
 
 .input-hint {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
   margin-top: 0.5rem;
   text-align: right;
 }
@@ -193,34 +198,47 @@ watch(() => props.show, (newShow) => {
 
 .dialog-btn {
   flex: 1;
-  padding: 0.875rem 1.5rem;
-  border-radius: var(--radius-sm);
-  font-size: 0.95rem;
-  font-weight: 600;
+  padding: 0.75rem 1.25rem;
+  border-radius: var(--radius-xs);
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: -0.006em;
   cursor: pointer;
-  transition: background-color .2s var(--ease), border-color .2s var(--ease), box-shadow .2s var(--ease), color .2s var(--ease);
-  border: 1px solid var(--btn-border);
-  background: var(--btn-bg);
-  color: var(--btn-text);
+  transition: all .15s var(--ease-out);
+  border: 1px solid rgba(71, 85, 105, 0.3);
+  background: transparent;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
 }
 
-.dialog-btn.cancel {
-  background: transparent;
+.dialog-btn.cancel:hover {
+  background: rgba(71, 85, 105, 0.3);
+  border-color: rgba(100, 116, 139, 0.4);
+  color: var(--text);
 }
 
-.dialog-btn.cancel:hover { background: var(--btn-hover-bg); border-color: var(--border-strong); }
+.dialog-btn.cancel:active {
+  background: rgba(71, 85, 105, 0.4);
+  transform: scale(0.98);
+}
 
 .dialog-btn.save {
   background: var(--btn-primary-bg);
-  border-color: transparent;
+  border-color: var(--btn-primary-bg);
   color: var(--btn-primary-text);
 }
-.dialog-btn.save:hover:not(:disabled) { background: var(--btn-primary-hover-bg); }
-.dialog-btn.save:active:not(:disabled) { background: var(--btn-primary-active-bg); }
+.dialog-btn.save:hover:not(:disabled) {
+  background: var(--btn-primary-hover-bg);
+  border-color: var(--btn-primary-hover-bg);
+}
+.dialog-btn.save:active:not(:disabled) {
+  background: var(--btn-primary-active-bg);
+  border-color: var(--btn-primary-active-bg);
+  transform: scale(0.98);
+}
 
 .dialog-btn:disabled {
   opacity: var(--btn-disabled-opacity);

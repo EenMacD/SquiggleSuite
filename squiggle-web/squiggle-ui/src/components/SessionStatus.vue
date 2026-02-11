@@ -23,15 +23,31 @@ const formatTime = (seconds: number): string => {
 <style scoped>
 .session-warning {
   position: fixed;
-  top: 20px;
+  top: calc(var(--appbar-h) + 16px);
   right: 20px;
-  background: #ffc107;
-  color: #000;
-  padding: 8px 12px;
-  border-radius: 6px;
+  background: rgba(251, 191, 36, 0.95);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  color: #78350F;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(217, 119, 6, 0.3);
   font-size: 0.875rem;
   z-index: 1000;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-  font-weight: 500;
+  box-shadow: var(--shadow-lg), 0 0 24px rgba(251, 191, 36, 0.3);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  animation: slideDown 0.3s var(--ease-out);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style> 
