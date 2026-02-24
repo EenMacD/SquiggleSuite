@@ -579,7 +579,7 @@ export function useAnimations(
     }
 
     // STEP 3: Track current ball carrier
-    let currentBallCarrier = ball.value.attachedTo ?
+    const currentBallCarrier = ball.value.attachedTo ?
       playersInSequence.find(p =>
         p.type === ball.value.attachedTo?.type &&
         p.id === ball.value.attachedTo?.id

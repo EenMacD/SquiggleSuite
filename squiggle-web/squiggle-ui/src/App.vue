@@ -187,6 +187,25 @@
                   <button
                     type="button"
                     class="help-accordion-header"
+                    @click="toggleHelpSection('sticky')"
+                  >
+                    <span>Create My First Play</span>
+                    <span class="help-chevron" :class="{ open: helpSections.sticky }">▾</span>
+                  </button>
+                  <div v-if="helpSections.sticky" class="help-accordion-body">
+                    <p class="help-text">
+                      Open a draggable sticky note to guide you while setting up your first play.
+                    </p>
+                    <button class="nav-btn tutorial-btn" @click="showStickyNote = true">
+                      Open Sticky Note
+                    </button>
+                  </div>
+                </div>
+
+                <div class="help-accordion-item">
+                  <button
+                    type="button"
+                    class="help-accordion-header"
                     @click="toggleHelpSection('setup')"
                   >
                     <span>Setting up players</span>
@@ -247,24 +266,6 @@
                   </div>
                 </div>
 
-                <div class="help-accordion-item">
-                  <button
-                    type="button"
-                    class="help-accordion-header"
-                    @click="toggleHelpSection('tutorial')"
-                  >
-                    <span>First play tutorial</span>
-                    <span class="help-chevron" :class="{ open: helpSections.tutorial }">▾</span>
-                  </button>
-                  <div v-if="helpSections.tutorial" class="help-accordion-body">
-                    <p class="help-text">
-                      Walk through creating, recording, and saving your very first play step-by-step.
-                    </p>
-                    <button class="nav-btn tutorial-btn" @click="launchFirstPlayTour">
-                      Start First Play Tutorial
-                    </button>
-                  </div>
-                </div>
               </div>
             </div>
           </div>
@@ -325,7 +326,7 @@
       </div>
     </div>
 
-    <FirstPlayTour ref="firstPlayTour" />
+    <FirstPlayStickyNote :show="showStickyNote" @close="showStickyNote = false" />
   </div>
 </template>
 
@@ -336,7 +337,7 @@ import PlaybackViewer from './components/PlaybackViewer.vue'
 import SavePlayDialog from './components/SavePlayDialog.vue'
 import SessionStatus from './components/SessionStatus.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
-import FirstPlayTour from './components/FirstPlayTour.vue'
+import FirstPlayStickyNote from './components/FirstPlayStickyNote.vue'
 import PlayActionsMenu from './components/PlayActionsMenu.vue'
 import SequencePopupMenu from './components/SequencePopupMenu.vue'
 import PlayerOptionsMenu from './components/PlayerOptionsMenu.vue'
@@ -362,25 +363,21 @@ const selectedDefensiveCount = ref(0)
 const isRecording = ref(false)
 const showPlays = ref(false)
 const showHelp = ref(false)
-type HelpSectionKey = 'setup' | 'paths' | 'phases' | 'zoom' | 'tutorial'
+type HelpSectionKey = 'setup' | 'paths' | 'phases' | 'zoom' | 'sticky'
 
 const helpSections = ref<Record<HelpSectionKey, boolean>>({
   setup: true,
   paths: false,
   phases: false,
   zoom: false,
-  tutorial: false,
+  sticky: false,
 })
 
 const toggleHelpSection = (key: HelpSectionKey) => {
   helpSections.value[key] = !helpSections.value[key]
 }
 
-const firstPlayTour = ref<InstanceType<typeof FirstPlayTour> | null>(null)
-
-const launchFirstPlayTour = () => {
-  firstPlayTour.value?.startTour()
-}
+const showStickyNote = ref(false)
 const currentPlayback = ref<Play | null>(null)
 const currentPlayerStates = ref<PlayerState[]>([])
 const currentBallEvents = ref<BallPassEvent[]>([])
@@ -1368,49 +1365,66 @@ svg.icon { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-w
   flex: 1;
   justify-content: center;
   font-weight: 600;
-  border: 1px solid rgba(71, 85, 105, 0.3);
+  border: 1px solid rgba(71, 85, 105, 0.5);
+  transition: all .2s var(--ease-out);
+  position: relative;
+  overflow: hidden;
 }
 
 .nav-btn.add-red {
-  background: rgba(239, 68, 68, 0.08);
-  border-color: rgba(239, 68, 68, 0.2);
-  color: #FCA5A5;
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #FECACA;
+  box-shadow: inset 0 1px 0 rgba(239, 68, 68, 0.1);
 }
 
 .nav-btn.add-red:hover {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: rgba(239, 68, 68, 0.3);
-  color: #FCA5A5;
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #FFF;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.3), inset 0 1px 0 rgba(239, 68, 68, 0.2);
 }
 
 .nav-btn.add-red:active {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.35);
+  border-color: rgba(239, 68, 68, 0.7);
+  transform: scale(0.98);
 }
 
 .nav-btn.add-blue {
-  background: rgba(59, 130, 246, 0.08);
-  border-color: rgba(59, 130, 246, 0.2);
-  color: #93C5FD;
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #BFDBFE;
+  box-shadow: inset 0 1px 0 rgba(59, 130, 246, 0.1);
 }
 
 .nav-btn.add-blue:hover {
-  background: rgba(59, 130, 246, 0.15);
-  border-color: rgba(59, 130, 246, 0.3);
-  color: #93C5FD;
+  background: rgba(59, 130, 246, 0.25);
+  border-color: rgba(59, 130, 246, 0.6);
+  color: #FFF;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.3), inset 0 1px 0 rgba(59, 130, 246, 0.2);
 }
 
 .nav-btn.add-blue:active {
-  background: rgba(59, 130, 246, 0.2);
-  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.35);
+  border-color: rgba(59, 130, 246, 0.7);
+  transform: scale(0.98);
 }
 
 .add-red .icon {
-  color: #FCA5A5;
+  color: #FECACA;
+  filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.4));
+}
+.nav-btn.add-red:hover .icon {
+  color: #FFF;
 }
 
 .add-blue .icon {
-  color: #93C5FD;
+  color: #BFDBFE;
+  filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.4));
+}
+.nav-btn.add-blue:hover .icon {
+  color: #FFF;
 }
 
 /* Actions */
