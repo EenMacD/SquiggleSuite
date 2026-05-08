@@ -269,24 +269,6 @@
               </div>
             </div>
           </div>
-
-          <!-- Section Divider -->
-          <div class="section-divider"></div>
-
-          <!-- Check for Updates -->
-          <div class="menu-section">
-            <button class="nav-btn update-btn" @click="checkForUpdates" :disabled="updateChecking">
-              <svg class="icon" :class="{ spinning: updateChecking }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                <path d="M1 4v6h6M23 20v-6h-6" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              {{ updateChecking ? 'Checking…' : 'Check for Updates' }}
-            </button>
-            <div v-if="updateResult" class="update-result" :class="updateResult.type">
-              <span>{{ updateResult.message }}</span>
-              <a v-if="updateResult.url" :href="updateResult.url" target="_blank" rel="noopener" class="update-link">View Release</a>
-            </div>
-          </div>
         </div>
       </div>
     </aside>
@@ -350,21 +332,21 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import RugbyPitch from './components/RugbyPitch.vue'
-import PlaybackViewer from './components/PlaybackViewer.vue'
-import SavePlayDialog from './components/SavePlayDialog.vue'
-import SessionStatus from './components/SessionStatus.vue'
-import ConfirmDialog from './components/ConfirmDialog.vue'
-import FirstPlayStickyNote from './components/FirstPlayStickyNote.vue'
-import PlayActionsMenu from './components/PlayActionsMenu.vue'
-import SequencePopupMenu from './components/SequencePopupMenu.vue'
-import PlayerOptionsMenu from './components/PlayerOptionsMenu.vue'
-import { playService } from './services/playService'
-import { usePlaysStore } from './stores/playsStore'
-import { useSessionStore } from './stores/sessionStore'
-import { useActivityTracker } from './composables/useActivityTracker'
-import type { Play, PlayerState } from './types/play'
-import type { BallPassEvent } from './types/game'
+import RugbyPitch from '../components/RugbyPitch.vue'
+import PlaybackViewer from '../components/PlaybackViewer.vue'
+import SavePlayDialog from '../components/SavePlayDialog.vue'
+import SessionStatus from '../components/SessionStatus.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import FirstPlayStickyNote from '../components/FirstPlayStickyNote.vue'
+import PlayActionsMenu from '../components/PlayActionsMenu.vue'
+import SequencePopupMenu from '../components/SequencePopupMenu.vue'
+import PlayerOptionsMenu from '../components/PlayerOptionsMenu.vue'
+import { playService } from '../services/playService'
+import { usePlaysStore } from '../stores/playsStore'
+import { useSessionStore } from '../stores/sessionStore'
+import { useActivityTracker } from '../composables/useActivityTracker'
+import type { Play, PlayerState } from '../types/play'
+import type { BallPassEvent } from '../types/game'
 
 const isMenuOpen = ref(false)
 const isDesktop = ref(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true)
@@ -667,34 +649,6 @@ const retryPendingSave = async () => {
     } else {
       alert('Failed to save play. Please try again.')
     }
-  }
-}
-
-// Update check
-const APP_VERSION = '0.1.0'
-const RELEASES_API = 'https://api.github.com/repos/EenMacD/SquiggleSuite/releases/latest'
-const updateChecking = ref(false)
-const updateResult = ref<{ type: 'success' | 'info' | 'error'; message: string; url?: string } | null>(null)
-
-const checkForUpdates = async () => {
-  updateChecking.value = true
-  updateResult.value = null
-  try {
-    const res = await fetch(RELEASES_API)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const data = await res.json()
-    const latest = (data.tag_name || '').replace(/^v/, '')
-    if (!latest) {
-      updateResult.value = { type: 'info', message: 'No releases found yet.', url: 'https://github.com/EenMacD/SquiggleSuite/releases' }
-    } else if (latest !== APP_VERSION) {
-      updateResult.value = { type: 'success', message: `Update available: v${latest}`, url: data.html_url }
-    } else {
-      updateResult.value = { type: 'info', message: `You're on the latest version (v${APP_VERSION}).` }
-    }
-  } catch {
-    updateResult.value = { type: 'error', message: 'Could not check for updates. Try again later.' }
-  } finally {
-    updateChecking.value = false
   }
 }
 </script>
@@ -1554,44 +1508,5 @@ svg.icon { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-w
 /* Sidebar menu wrapper - no overrides, keep original component styling */
 .sidebar-menu-wrapper {
   /* Empty - components use their original styles */
-}
-
-/* Update check */
-.update-btn .icon.spinning {
-  animation: spin 1s linear infinite;
-}
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-.update-result {
-  margin-top: 8px;
-  padding: 10px 12px;
-  border-radius: var(--radius-xs);
-  font-size: 0.8rem;
-  line-height: 1.4;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.update-result.success {
-  background: rgba(34, 197, 94, 0.12);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  color: #4ADE80;
-}
-.update-result.info {
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid rgba(59, 130, 246, 0.25);
-  color: #60A5FA;
-}
-.update-result.error {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.25);
-  color: #F87171;
-}
-.update-link {
-  color: inherit;
-  text-decoration: underline;
-  font-weight: 600;
 }
 </style>
