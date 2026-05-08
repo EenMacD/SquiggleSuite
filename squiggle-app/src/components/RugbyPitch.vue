@@ -1061,6 +1061,11 @@ const handlePlayerOptionsMode = (mode: 'drag' | 'path') => {
 const handlePlayerOptionsSpeed = (speed: number) => {
   if (uiState.selectedPlayer) {
     uiState.selectedPlayer.speed = speed
+    const seq = gameState.currentSequenceData.value
+    if (seq) {
+      const pid = `${uiState.selectedPlayer.type}-${uiState.selectedPlayer.id}`
+      if (seq.playerData[pid]) seq.playerData[pid].speed = speed
+    }
     rugbyCanvas.value?.redraw()
   }
 }
@@ -1068,6 +1073,11 @@ const handlePlayerOptionsSpeed = (speed: number) => {
 const handlePlayerOptionsDelay = (delay: number) => {
   if (uiState.selectedPlayer) {
     uiState.selectedPlayer.sequenceDelay = delay
+    const seq = gameState.currentSequenceData.value
+    if (seq) {
+      const pid = `${uiState.selectedPlayer.type}-${uiState.selectedPlayer.id}`
+      if (seq.playerData[pid]) seq.playerData[pid].sequenceDelay = delay
+    }
     rugbyCanvas.value?.redraw()
   }
 }
@@ -1081,10 +1091,19 @@ const handlePlayerOptionsDelayReset = () => {
 
 const handlePlayerOptionsClearPath = () => {
   if (uiState.selectedPlayer) {
+    const pid = `${uiState.selectedPlayer.type}-${uiState.selectedPlayer.id}`
     uiState.selectedPlayer.path = []
     uiState.selectedPlayer.mode = 'drag'
     // Clear timed pass when path is cleared
     uiState.selectedPlayer.timedPass = undefined
+    uiState.selectedPlayer.isLooping = false
+    // Remove from sequence so the player won't run on next execution
+    const seq = gameState.currentSequenceData.value
+    if (seq) {
+      delete seq.playerData[pid]
+      const idx = seq.activePlayerIds.indexOf(pid)
+      if (idx > -1) seq.activePlayerIds.splice(idx, 1)
+    }
     rugbyCanvas.value?.redraw()
   }
 }
