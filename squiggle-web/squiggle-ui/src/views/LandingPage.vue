@@ -56,16 +56,21 @@
     <section id="download" class="download">
       <h2 class="section-title">Download the Desktop App</h2>
       <p class="section-sub">Native performance. Offline support. Available for all major platforms.</p>
+      <div v-if="loadingRelease" class="download-loading">
+        <svg class="spinner" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#60A5FA" stroke-width="2"><circle cx="12" cy="12" r="10" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/></svg>
+        <span>Checking latest release…</span>
+      </div>
       <div class="download-grid">
-        <a v-for="p in platforms" :key="p.os" :href="p.url" class="download-card" :class="{ recommended: p.recommended }" target="_blank" rel="noopener" :id="'download-' + p.os.toLowerCase()">
+        <a v-for="p in platforms" :key="p.os" :href="p.downloadUrl || releasesUrl" class="download-card" :class="{ recommended: p.recommended, disabled: !p.downloadUrl }" target="_blank" rel="noopener" :id="'download-' + p.os.toLowerCase()">
           <div v-if="p.recommended" class="rec-badge">Recommended</div>
           <div class="os-icon" v-html="p.icon"></div>
           <h3>{{ p.os }}</h3>
-          <p class="os-ext">{{ p.ext }}</p>
-          <span class="dl-btn">Download</span>
+          <p class="os-ext">{{ p.downloadUrl ? p.fileName : p.ext }}</p>
+          <span class="dl-btn">{{ p.downloadUrl ? 'Download' : 'Coming Soon' }}</span>
         </a>
       </div>
-      <p class="download-note">Desktop builds coming soon — <a :href="releasesUrl" target="_blank" rel="noopener">watch releases on GitHub</a></p>
+      <p v-if="releaseVersion" class="download-note">Latest release: <strong>{{ releaseVersion }}</strong> — <a :href="releaseUrl || releasesUrl" target="_blank" rel="noopener">view on GitHub</a></p>
+      <p v-else class="download-note">No releases yet — <a :href="releasesUrl" target="_blank" rel="noopener">watch releases on GitHub</a></p>
     </section>
 
     <!-- Web CTA -->
@@ -89,17 +94,74 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 
 const year = new Date().getFullYear()
 const releasesUrl = 'https://github.com/EenMacD/SquiggleSuite/releases'
+const RELEASES_API = 'https://api.github.com/repos/EenMacD/SquiggleSuite/releases/latest'
 
 const detectedOS = ref('')
+const loadingRelease = ref(true)
+const releaseVersion = ref('')
+const releaseUrl = ref('')
+
+// Asset matching patterns per platform
+const assetPatterns: Record<string, RegExp[]> = {
+  Windows: [/\.msi$/i, /\.exe$/i, /x64.*setup/i],
+  macOS: [/\.dmg$/i, /\.app\.tar\.gz$/i, /darwin/i, /macos/i],
+  Linux: [/\.AppImage$/i, /\.deb$/i, /linux/i],
+}
+
+interface Platform {
+  os: string
+  ext: string
+  icon: string
+  recommended: boolean
+  downloadUrl: string
+  fileName: string
+}
+
+const platforms = reactive<Platform[]>([
+  { os: 'Windows', ext: '.msi / .exe', icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="40" height="40"><path d="M3 12V6.5l8-1.1V12H3zm0 .5h8v6.6l-8-1.1V12.5zm9-7.7L22 3.5V12h-10V4.8zm0 7.7H22v8.5l-10-1.3V12.5z"/></svg>', recommended: false, downloadUrl: '', fileName: '' },
+  { os: 'macOS', ext: '.dmg', icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="40" height="40"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>', recommended: false, downloadUrl: '', fileName: '' },
+  { os: 'Linux', ext: '.AppImage / .deb', icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="40" height="40"><path d="M12.5 2c-.6 0-1.1.6-1 1.2.2 1.3-.2 2-1 2.8C9.3 7.2 8.5 9 9 11c-1.5.5-2.5 1.5-3 3-.7 2.1.3 4.4 2.3 5.3.3.2.7.3 1 .4 1 2 3 3.3 5.2 3.3 2.7 0 5-2.2 5-5 0-.3 0-.7-.1-1 1.3-1 2.1-2.6 2.1-4.3 0-2-1.1-3.8-2.8-4.7.1-.5.1-1 0-1.5-.3-1.2-1.4-2-2.6-1.8-.7-1.7-2.2-2.7-3.6-2.7z"/></svg>', recommended: false, downloadUrl: '', fileName: '' },
+])
+
+const fetchReleaseAssets = async () => {
+  try {
+    const res = await fetch(RELEASES_API)
+    if (!res.ok) return
+    const data = await res.json()
+    releaseVersion.value = data.tag_name || ''
+    releaseUrl.value = data.html_url || ''
+    const assets: { name: string; browser_download_url: string }[] = data.assets || []
+
+    for (const p of platforms) {
+      const patterns = assetPatterns[p.os] || []
+      const match = assets.find(a => patterns.some(re => re.test(a.name)))
+      if (match) {
+        p.downloadUrl = match.browser_download_url
+        p.fileName = match.name
+      }
+    }
+  } catch {
+    // Silently fail — cards will show "Coming Soon"
+  } finally {
+    loadingRelease.value = false
+  }
+}
+
 onMounted(() => {
   const ua = navigator.userAgent.toLowerCase()
   if (ua.includes('win')) detectedOS.value = 'Windows'
   else if (ua.includes('mac')) detectedOS.value = 'macOS'
   else if (ua.includes('linux')) detectedOS.value = 'Linux'
+
+  platforms.forEach(p => {
+    p.recommended = p.os === detectedOS.value
+  })
+
+  fetchReleaseAssets()
 })
 
 const features = [
@@ -110,19 +172,6 @@ const features = [
   { title: 'Ball Passing', desc: 'Set up timed passes between players. The ball follows realistic trajectories during playback.', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32"><circle cx="12" cy="12" r="4"/><path d="M4 12h4M16 12h4M12 4v4M12 16v4"/></svg>' },
   { title: 'Save & Record', desc: 'Save your plays locally. Record animated playback for review and sharing with your team.', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>' },
 ]
-
-const platforms = [
-  { os: 'Windows', ext: '.exe', url: releasesUrl, icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="40" height="40"><path d="M3 12V6.5l8-1.1V12H3zm0 .5h8v6.6l-8-1.1V12.5zm9-7.7L22 3.5V12h-10V4.8zm0 7.7H22v8.5l-10-1.3V12.5z"/></svg>', recommended: false },
-  { os: 'macOS', ext: '.dmg', url: releasesUrl, icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="40" height="40"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>', recommended: false },
-  { os: 'Linux', ext: '.AppImage', url: releasesUrl, icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="40" height="40"><path d="M12.5 2c-.6 0-1.1.6-1 1.2.2 1.3-.2 2-1 2.8C9.3 7.2 8.5 9 9 11c-1.5.5-2.5 1.5-3 3-.7 2.1.3 4.4 2.3 5.3.3.2.7.3 1 .4 1 2 3 3.3 5.2 3.3 2.7 0 5-2.2 5-5 0-.3 0-.7-.1-1 1.3-1 2.1-2.6 2.1-4.3 0-2-1.1-3.8-2.8-4.7.1-.5.1-1 0-1.5-.3-1.2-1.4-2-2.6-1.8-.7-1.7-2.2-2.7-3.6-2.7z"/></svg>', recommended: false },
-]
-
-// Auto-mark detected OS as recommended
-onMounted(() => {
-  platforms.forEach(p => {
-    p.recommended = p.os === detectedOS.value
-  })
-})
 </script>
 
 <style scoped>
@@ -234,12 +283,20 @@ onMounted(() => {
   padding: 100px 24px; max-width: 900px; margin: 0 auto;
 }
 .download-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 24px; }
+.download-loading {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin-bottom: 24px; color: var(--text-secondary); font-size: 0.9rem;
+}
+.spinner { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .download-card {
   position: relative; padding: 36px 24px; border-radius: 16px; text-align: center;
   background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(71, 85, 105, 0.3);
   text-decoration: none; color: var(--text); transition: all .3s var(--ease); cursor: pointer;
 }
 .download-card:hover { transform: translateY(-4px); border-color: rgba(59, 130, 246, 0.4); }
+.download-card.disabled { opacity: 0.6; cursor: default; }
+.download-card.disabled:hover { transform: none; }
 .download-card.recommended { border-color: rgba(59, 130, 246, 0.5); background: rgba(59, 130, 246, 0.08); }
 .rec-badge {
   position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
@@ -248,15 +305,17 @@ onMounted(() => {
 }
 .os-icon { margin-bottom: 16px; color: var(--text-secondary); display: flex; justify-content: center; }
 .download-card h3 { font-size: 1.15rem; font-weight: 700; margin-bottom: 4px; }
-.os-ext { color: var(--muted); font-size: 0.8rem; margin-bottom: 16px; }
+.os-ext { color: var(--muted); font-size: 0.8rem; margin-bottom: 16px; word-break: break-all; }
 .dl-btn {
   display: inline-block; padding: 8px 24px; border-radius: 8px; font-weight: 600; font-size: 0.85rem;
   background: rgba(59, 130, 246, 0.15); color: #60A5FA; transition: all .2s;
 }
 .download-card:hover .dl-btn { background: var(--accent); color: #fff; }
+.download-card.disabled:hover .dl-btn { background: rgba(59, 130, 246, 0.15); color: #60A5FA; }
 .download-note { text-align: center; color: var(--muted); font-size: 0.85rem; }
 .download-note a { color: #60A5FA; text-decoration: none; }
 .download-note a:hover { text-decoration: underline; }
+.download-note strong { color: #60A5FA; }
 
 /* Web CTA */
 .web-cta { padding: 60px 24px 100px; }
