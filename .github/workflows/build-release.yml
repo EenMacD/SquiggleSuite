@@ -2,12 +2,42 @@ name: Build & Release Desktop App
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [ main ]
+    paths:
+      - 'squiggle-app/**'
+      - '.github/workflows/build-release.yml'
   workflow_dispatch:
 
 jobs:
+  # First: read version and create/update the tag
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version from tauri.conf.json
+        id: version
+        run: |
+          VERSION=$(jq -r '.version' squiggle-app/src-tauri/tauri.conf.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Detected version: $VERSION"
+
+      - name: Create or update tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f "v${{ steps.version.outputs.version }}"
+          git push -f origin "v${{ steps.version.outputs.version }}"
+
   build:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -55,8 +85,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: squiggle-app
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Squiggle ${{ github.ref_name }}'
+          tagName: ${{ needs.prepare.outputs.tag }}
+          releaseName: 'Squiggle ${{ needs.prepare.outputs.tag }}'
           releaseBody: 'Download Squiggle for your platform below.'
           releaseDraft: false
           prerelease: false
