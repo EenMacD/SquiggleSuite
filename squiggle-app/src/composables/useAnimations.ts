@@ -10,7 +10,7 @@ import type {
   TimedPass
 } from '../types/game'
 import type { PlayerState } from '../types/play'
-import { ANIMATION_CONFIG } from '../types/game'
+import { ANIMATION_CONFIG, calculateFieldDimensions } from '../types/game'
 
 export function useAnimations(
   players: Ref<Player[]>,
@@ -90,19 +90,24 @@ export function useAnimations(
     endPosition: { x: number, y: number },
     options: BallPassAnimationOptions,
     duration: number
-  ): BallPassEvent => ({
-    id: generateBallEventId(),
-    type: options.eventType ?? 'pass',
-    fromPlayerId: options.fromPlayer?.id ?? null,
-    fromPlayerType: options.fromPlayer?.type ?? null,
-    toPlayerId: options.toPlayer?.id ?? null,
-    toPlayerType: options.toPlayer?.type ?? null,
-    startPosition: { ...startPosition },
-    endPosition: { ...endPosition },
-    startTimestamp: Date.now(),
-    durationMs: duration,
-    easing: options.easing ?? DEFAULT_EASING
-  })
+  ): BallPassEvent => {
+    // Store positions in relative field coordinates so playback can scale them
+    // (matches manual key-pass events and PlaybackViewer's decoder)
+    const dims = calculateFieldDimensions(canvasConfig.value.width, canvasConfig.value.height)
+    return {
+      id: generateBallEventId(),
+      type: options.eventType ?? 'pass',
+      fromPlayerId: options.fromPlayer?.id ?? null,
+      fromPlayerType: options.fromPlayer?.type ?? null,
+      toPlayerId: options.toPlayer?.id ?? null,
+      toPlayerType: options.toPlayer?.type ?? null,
+      startPosition: { x: dims.toRelativeX(startPosition.x), y: dims.toRelativeY(startPosition.y) },
+      endPosition: { x: dims.toRelativeX(endPosition.x), y: dims.toRelativeY(endPosition.y) },
+      startTimestamp: Date.now(),
+      durationMs: duration,
+      easing: options.easing ?? DEFAULT_EASING
+    }
+  }
 
   const findPlayer = (type: 'attacking' | 'defensive', id: number): Player | null => {
     return players.value.find(p => p.type === type && p.id === id) || null
@@ -205,9 +210,8 @@ export function useAnimations(
               passer.isCarryingBall = false
             }
 
-            const passOrigin = passer
-              ? getHandPos(passer)
-              : { x: ball.value.x, y: ball.value.y }
+            // Always throw from the ball's last known position
+            const passOrigin = { x: ball.value.x, y: ball.value.y }
 
             // Animate ball pass to this player
             animateBallPass(passOrigin, player, {
@@ -317,9 +321,12 @@ export function useAnimations(
 
         const easeProgress = applyEasing(progress, easing)
 
+        // Track the receiver as they move so the ball lands in their hands
+        const liveTarget = getHandPos(toPlayer)
+
         // Direct linear interpolation - no arc
-        ball.value.x = fromPos.x + (targetPos.x - fromPos.x) * easeProgress
-        ball.value.y = fromPos.y + (targetPos.y - fromPos.y) * easeProgress
+        ball.value.x = fromPos.x + (liveTarget.x - fromPos.x) * easeProgress
+        ball.value.y = fromPos.y + (liveTarget.y - fromPos.y) * easeProgress
 
         if (progress === 0) {
           console.log('[animateBallPass] First frame', {
@@ -380,7 +387,7 @@ export function useAnimations(
           fromPlayer: `${fromPlayer.type}-${fromPlayer.id}`,
           fromPlayerPos: { x: fromPlayer.x, y: fromPlayer.y }
         })
-        await animateBallPass(getHandPos(fromPlayer), targetPlayer, {
+        await animateBallPass({ x: ball.value.x, y: ball.value.y }, targetPlayer, {
           fromPlayer,
           toPlayer: targetPlayer,
           recordEvent: options.recordEvent !== false
@@ -498,11 +505,12 @@ export function useAnimations(
         const toPlayer = playersInSequence.find(p => p.id === ballEvent.toPlayerId)
 
         if (toPlayer) {
-          const fromPos = ballEvent.startPosition || (fromPlayer
-            ? { x: fromPlayer.x, y: fromPlayer.y }
-            : { x: ball.value.x, y: ball.value.y })
+          // Start from the ball's last known position (stored startPosition is
+          // in relative coords, so it can't be used directly as a pixel position)
+          const fromPos = { x: ball.value.x, y: ball.value.y }
 
           await animateBallPass(fromPos, toPlayer, {
+            fromPlayer: fromPlayer ?? undefined,
             recordEvent: false,
             duration: ballEvent.durationMs,
             easing: ballEvent.easing
