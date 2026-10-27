@@ -86,6 +86,8 @@ let ballEventsQueue: BallPassEvent[] = []
 let nextBallEventIdx = 0
 let activeBallEvent: BallPassEvent | null = null
 let activeBallEventEnd = 0
+// Where the ball actually was when the active pass began (absolute canvas px)
+let activeBallEventOrigin: { x: number, y: number } | null = null
 const rafId = ref<number | null>(null)
 const currentPlaybackIndex = ref(0)
 const isRunning = ref(false)
@@ -105,6 +107,7 @@ const prepareBallEvents = () => {
   nextBallEventIdx = 0
   activeBallEvent = null
   activeBallEventEnd = 0
+  activeBallEventOrigin = null
 }
 
 const resolveBallPosition = (
@@ -117,6 +120,8 @@ const resolveBallPosition = (
   while (!activeBallEvent && nextBallEventIdx < ballEventsQueue.length && ballEventsQueue[nextBallEventIdx].startTimestamp <= timelineTime) {
     activeBallEvent = ballEventsQueue[nextBallEventIdx++]
     activeBallEventEnd = activeBallEvent.startTimestamp + activeBallEvent.durationMs
+    // Pass starts from the ball's last known position
+    activeBallEventOrigin = { x: ball.value.x, y: ball.value.y }
   }
 
   if (activeBallEvent) {
@@ -131,6 +136,7 @@ const resolveBallPosition = (
         : null
       activeBallEvent = null
       activeBallEventEnd = 0
+      activeBallEventOrigin = null
       return resolveBallPosition(timelineTime, finalPos, attachment)
     }
 
@@ -140,8 +146,8 @@ const resolveBallPosition = (
       const eased = applyEventEasing(progress, activeBallEvent.easing)
       
       // Convert relative positions to absolute coordinates for interpolation
-      const startX = dims.toAbsoluteX(activeBallEvent.startPosition.x)
-      const startY = dims.toAbsoluteY(activeBallEvent.startPosition.y)
+      const startX = activeBallEventOrigin?.x ?? dims.toAbsoluteX(activeBallEvent.startPosition.x)
+      const startY = activeBallEventOrigin?.y ?? dims.toAbsoluteY(activeBallEvent.startPosition.y)
       const endX = dims.toAbsoluteX(activeBallEvent.endPosition.x)
       const endY = dims.toAbsoluteY(activeBallEvent.endPosition.y)
       
@@ -611,6 +617,7 @@ const stopSequence = () => {
   nextBallEventIdx = 0
   activeBallEvent = null
   activeBallEventEnd = 0
+  activeBallEventOrigin = null
   // Auto-stop recording if active
   if (isRecordingVideo.value) stopRecordingVideo()
 }
